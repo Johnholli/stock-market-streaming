@@ -193,6 +193,7 @@ A NoSQL database like DynamoDB is ideal for handling real-time stock data due to
 
 *What Will Be Stored in DynamoDB?*
 The Lambda function will process the following key stock data fields before storing them in DynamoDB:
+
 <img width="608" height="568" alt="image" src="https://github.com/user-attachments/assets/9468544b-9931-4974-85b4-b8a01c2563ef" />
 
 
