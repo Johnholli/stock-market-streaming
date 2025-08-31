@@ -1,17 +1,15 @@
 
-This project implements a real-time stock data streaming pipeline that fetches live stock prices and streams them to AWS Kinesis for processing and analytics.
-
 ## Overview of Project ☁️
-Build a serverless data pipeline that continuously streams stock market data from Yahoo Finance to AWS Kinesis Data Streams. The pipeline fetches real-time stock prices, calculates price changes, and streams the data for downstream analytics and monitoring.
-
-## Architecture 🏗️
-```
-Yahoo Finance API → Python Script → AWS Kinesis Data Streams → [Analytics/Storage]
-```
+Build a serverless data pipeline that continuously streams stock market data from Yahoo Finance to AWS Kinesis Data Streams. The pipeline fetches real-time stock prices, calculates price changes, and streams the data for downstream analytics and monitoring. 
 
 ## Services Used 🛠
 - **AWS Kinesis Data Streams**: Ingests and processes real-time stock data streams [Data Streaming]
-- **Yahoo Finance API (yfinance)**: Provides real-time stock market data [Data Source]  
+- **Yahoo Finance API (yfinance)**: Provides real-time stock market data [Data Source]
+- **Amazon DynamoDB**: Stores processed stock data for low-latency querying
+- **AWS Lambda**: Processes data and detects anomalies
+- **Amazon S3**: Stores raw stock data for long-term analytics
+- **Amazon Athena**: Querying historical data
+- **Amazon SNS**: Sends real-time stock trend alerts using AWS Lambda
 - **AWS IAM**: Manages secure access permissions for Kinesis operations [Security]
 - **Python Virtual Environment**: Isolates project dependencies [Development]
 
@@ -19,6 +17,23 @@ Yahoo Finance API → Python Script → AWS Kinesis Data Streams → [Analytics/
 - Python 3.9+
 - AWS CLI configured with appropriate permissions
 - AWS account with Kinesis access
+
+
+## Architecture 🏗️
+
+<img width="1538" height="750" alt="image" src="https://github.com/user-attachments/assets/8033df09-3702-4db1-94c8-c53e8218bf2d" />
+
+## ➡️ Final Result
+
+A fully functional near real-time stock analytics pipeline built using AWS services, featuring:
+
+Event-driven architecture with Amazon Kinesis for real-time data ingestion
+Lambda-based anomaly detection and stock trend evaluation
+Low-latency storage in DynamoDB for fast access to processed data
+Historical data archiving in Amazon S3 and querying via Athena
+Real-time alerts via Amazon SNS (Email/SMS) for significant stock movements
+Secure and cost-optimized design using IAM and serverless technologies
+This project demonstrates how to build a scalable, alert-driven financial data pipeline using modern AWS cloud-native tools.
 
 ## Setup Instructions
 
@@ -56,10 +71,50 @@ aws kinesis describe-stream --stream-name Stock-market-stream --query 'StreamDes
 ```
 Wait until status shows `"ACTIVE"` before proceeding.
 
-### 7. Run the Streaming Application
+### 7. Write the Python Script to stream stock data
+Now that Kinesis is ready and our local environment is set up, we need a Python script to fetch stock data and continuously send it to Kinesis.
+
+1. Create a New Python File
+Open any code editor (VS Code, PyCharm, or Notepad++).
+Create a new file and save it as `stream_stock_data.py`.
+
+2. Copy and Paste the Script Below
+
+<img width="696" height="664" alt="Screenshot 2025-08-30 at 5 45 56 PM" src="https://github.com/user-attachments/assets/10960f53-e4ea-4c4a-a6dc-d6876a54cca7" />
+
+<img width="697" height="608" alt="Screenshot 2025-08-30 at 5 48 50 PM" src="https://github.com/user-attachments/assets/78faa1ed-ef7d-45a2-9a3a-2fb8e2c2fbe5" />
+
+
+📝 Remember to replace <YOUR_DATA_STREAM_NAME> with the actual name of your Kinesis Data Stream!
+
+What This Code Does
+
+1. Fetches Stock Data from Yahoo Finance
+Retrieves the latest Open, High, Low, Close, Volume, and Previous Close for `AAPL`.
+Calculates Change and Change Percentage based on previous close.
+
+2. Formats the Data into a JSON Object
+Converts stock data into a structured dictionary with a timestamp.
+
+3. Streams Data to AWS Kinesis
+Sends the JSON-encoded stock data to an AWS Kinesis Data Stream every 30 seconds.
+Uses AAPL as the `PartitionKey` for better ordering.
+
+4. Handles Errors & Retries
+If API fails or data is missing, the script waits and retries instead of crashing.
+
+5. Ensures Debugging & Logging
+Prints each sent record and Kinesis response to the terminal for monitoring.
+
+### 8. Run the Streaming Application
 ```bash
 python stream_stock_data.py
 ```
+Expected Output:
+Every 30 seconds, you should see something like:
+
+<img width="1396" height="146" alt="image" src="https://github.com/user-attachments/assets/aae5752d-9d5a-45e8-a814-560fb821e92e" />
+
 
 ## Configuration ⚙️
 
@@ -78,21 +133,7 @@ Edit `stream_stock_data.py` to change the stock symbol:
 STOCK_SYMBOL = "TSLA"  # Change to any valid stock symbol
 ```
 
-## Data Schema 📊
-Each streamed record contains:
-```json
-{
-  "symbol": "AAPL",
-  "open": 232.51,
-  "high": 233.38,
-  "low": 231.37,
-  "price": 232.14,
-  "previous_close": 232.56,
-  "change": -0.42,
-  "change_percent": -0.18,
-  "volume": 39389400,
-  "timestamp": "2025-08-30T21:50:25Z"
-}
+
 ```
 
 ## Monitoring 📈
@@ -143,16 +184,59 @@ aws kinesis put-record --stream-name Stock-market-stream --data '{"test": "data"
    - Table name: `stock-market-data`
    - Partition key: `symbol` (String)
    - Sort key: `timestamp` (String)
+  
+*Why Do We Need a DynamoDB Table?*
+A NoSQL database like DynamoDB is ideal for handling real-time stock data due to its:
+- Fast read/write operations – Ensuring low-latency querying.
+- Flexible schema – Enabling easy adjustments to stock data fields.
+- Scalability – Handling high-volume stock transactions efficiently.
+
+*What Will Be Stored in DynamoDB?*
+The Lambda function will process the following key stock data fields before storing them in DynamoDB:
+<img width="608" height="568" alt="image" src="https://github.com/user-attachments/assets/9468544b-9931-4974-85b4-b8a01c2563ef" />
+
 
 2. **Create S3 Bucket for Raw Data**
    - Bucket name: `stock-market-data-bucket-{unique-id}`
    - Store raw JSON data for historical analysis
+  
+3. **Create a New IAM Role for Lambda**
+   Before creating the Lambda function, set up an IAM role with the necessary permissions:
+   Open AWS Console → Navigate to IAM.
+   Click Roles → Create Role.
+   Trusted Entity Type: Select AWS Service.
+   Use Case: Choose Lambda → Click Next.
 
-3. **Deploy Lambda Function**
+   Attach Policies: Add the following managed policies:
+  - 'AmazonKinesisFullAccess` (Read from Kinesis).
+  - `AmazonDynamoDBFullAccess` (Write to DynamoDB).
+  - `AWSLambdaBasicExecutionRole` (CloudWatch logging).
+  - `AmazonS3FullAccess` (Write to S3).
+
+Click Next → Name the role `Lambda_Kinesis_DynamoDB_Role` → Create Role.
+
+4. **Deploy Lambda Function**
    - Function name: `ProcessStockData`
    - Runtime: Python 3.13
    - Trigger: Kinesis Data Stream
    - Purpose: Process and store data in both DynamoDB and S3
+
+5. **Deploy the Lambda Code**
+   
+<img width="694" height="629" alt="Screenshot 2025-08-30 at 6 15 13 PM" src="https://github.com/user-attachments/assets/7f1de9ab-ec57-4ca1-a313-6e6dc4118be0" />
+
+<img width="690" height="578" alt="Screenshot 2025-08-30 at 6 15 38 PM" src="https://github.com/user-attachments/assets/f6a2a64b-e22a-4bb0-9678-35d61ed4e547" />
+
+6. **Test the Integration**
+
+- Verify Data in DynamoDB
+Open AWS Console → Navigate to DynamoDB.
+Click on stock-market-data → Explore Table Items.
+You should see processed stock data records appearing in real-time.
+
+- Verify Data in S3
+Open AWS Console → Navigate to S3.
+You should see the raw stock data records appearing in real-time.
 
 ### Query Historical Stock Data using Amazon Athena
 
@@ -186,6 +270,14 @@ aws glue create-table --database-name stock_data_db --table-input '{
   }
 }'
 ```
+Query Data Using Athena
+
+1. Open AWS Console → Navigate to Amazon Athena.
+2. Click- Launch Query Editor. 
+3. Select stock_data_db as the database.
+4. You will get a pop-up like one given below asking to setup the query location in Amazon S3. Click on Edit Settings.
+5. From the view option, select the currently created S3 bucket. 
+6. Click Save.
 
 #### Query Examples
 ```sql
@@ -225,12 +317,68 @@ WHERE ABS(((price - previous_close) / previous_close) * 100) > 5;
    # Subscribe to email alerts
    aws sns subscribe --topic-arn arn:aws:sns:us-east-1:YOUR-ACCOUNT:Stock_Trend_Alerts --protocol email --notification-endpoint your-email@example.com
    ```
+3. **Create an IAM Role for Lambda**
 
-3. **Deploy Trend Analysis Lambda**
-   - Function name: `StockTrendAnalysis`
-   - Trigger: DynamoDB Streams
-   - Purpose: Detect trend reversals using moving averages (SMA-5 vs SMA-20)
+   Before creating the Lambda function, we need to set up an IAM role with appropriate permissions:
 
+   - Go to AWS IAM Console → Click Roles → Click Create Role.
+   - Select Trusted Entity: `AWS Service`, and choose `Lambda`.
+   - Attach Policies:
+    'AmazonDynamoDBFullAccess` → Allows Lambda to read stock data.
+    `AmazonSNSFullAccess` → Allows Lambda to publish alerts to SNS.
+    `AWSLambdaBasicExecutionRole` → Allows CloudWatch Logs.
+   - Click Next, name the role `StockTrendLambdaRole`, and create the role.
+
+4. **Deploy Trend Analysis Lambda**
+    1. Go to AWS Lambda Console → Create Function.
+    2. Choose "Author from Scratch".
+    3. Function Name: `StockTrendAnalysis`
+    4. Runtime: Python 3.13.
+    5. Permissions: Choose "Use an existing role" and select StockTrendLambdaRole.
+    6. Click Create Function.
+    7. In the function overview, Click on Add Trigger.
+    8. Select DynamoDB as the source.
+    9. Choose the created DynamoDB table (`stock-market-data`).
+    10. Modify the Batch size to 2.
+    11. Add the Lambda Code given below:
+  
+  <img width="692" height="663" alt="Screenshot 2025-08-30 at 6 37 05 PM" src="https://github.com/user-attachments/assets/866c5227-3a72-477e-91e5-df399194e083" />
+
+  <img width="694" height="667" alt="Screenshot 2025-08-30 at 6 38 38 PM" src="https://github.com/user-attachments/assets/802b572c-9ccb-49a1-9556-b8575ceddd66" />
+
+   📝 Make sure to replace <YOUR-DYNAMODB-TABLE-NAME> with your actual table name and <YOUR-SNS-TOPIC-ARN> with your actual SNS Topic ARN. 
+  
+  12. Click on Deploy.
+
+Understanding the Lambda Code for Trend Analysis
+Here’s a breakdown of how it works:
+
+1. Fetching Recent Stock Data
+The function retrieves stock prices from the last 5 minutes using `get_recent_stock_data()`.
+It queries DynamoDB for stock records and sorts them by timestamp.
+
+2. Calculating Moving Averages
+The function computes SMA-5 (short-term) and SMA-20 (long-term) averages using `calculate_moving_average()`.
+It also calculates the previous values of these SMAs to compare trends over time.
+
+3. Detecting Trend Reversals
+If SMA-5 crosses above SMA-20, it signals an uptrend (BUY opportunity).
+If SMA-5 crosses below SMA-20, it signals a downtrend (SELL opportunity).
+
+4. Sending Alerts via Amazon SNS
+If a trend shift is detected, a notification is published to an SNS topic, alerting users about potential buying or selling opportunities.
+The function handles possible SNS failures using a `try-except` block.
+
+### Conclusion
+
+This project successfully demonstrates how to build a near real-time stock market data analytics pipeline using AWSS fully managed, serverless services. By integrating Amazon Kinesis, AWS Lambda, Amazon DynamoDB, Amazon S3, Amazon Athena, and Amazon SNS, we've created a robust and scalable architecture capable of streaming, processing, storing, analyzing, and alerting on stock data with minimal operational overhead. This hands-on experience with in this project provides a strong foundation for building more advanced real-time analytics systems in production environments.
+
+Key outcomes:
+Real-time data ingestion and processing with event-driven architecture.
+Anomaly detection and trend alerts using AWS Lambda and SNS.
+Separation of raw and processed data for efficient storage and analytics.
+Low-cost implementation suitable for learning and prototyping.
+ 
 ## Project Cleanup 🧹
 
 **Warning**: Remember to clean up resources to avoid unexpected charges!
