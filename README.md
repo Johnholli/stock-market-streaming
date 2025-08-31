@@ -277,4 +277,4 @@ aws glue delete-database --name stock_data_db
 **Author**: John Holly  
 **Date**: August 2025  
 **Version**: 2.0  
-**Note**: This implements a near real-time pipeline (30-second delays) optimized for learning and cost-effectiveness. EOF
+**Note**: This implements a near real-time pipeline (30-second delays) optimized for learning and cost-effectiveness.
