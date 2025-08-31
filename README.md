@@ -1,4 +1,3 @@
-# Real-Time Stock Market Data Streaming Pipeline ⚡
 
 This project implements a real-time stock data streaming pipeline that fetches live stock prices and streams them to AWS Kinesis for processing and analytics.
 
@@ -137,26 +136,145 @@ aws kinesis list-streams
 aws kinesis put-record --stream-name Stock-market-stream --data '{"test": "data"}' --partition-key "test"
 ```
 
-## Next Steps 🚀
-- Set up Kinesis Analytics for real-time processing
-- Add Lambda functions for data transformation
-- Store processed data in DynamoDB or S3
-- Create CloudWatch dashboards for monitoring
-- Implement multiple stock symbols streaming
+## Advanced Pipeline Components
+
+### Processing Data with AWS Lambda
+1. **Create DynamoDB Table**
+   - Table name: `stock-market-data`
+   - Partition key: `symbol` (String)
+   - Sort key: `timestamp` (String)
+
+2. **Create S3 Bucket for Raw Data**
+   - Bucket name: `stock-market-data-bucket-{unique-id}`
+   - Store raw JSON data for historical analysis
+
+3. **Deploy Lambda Function**
+   - Function name: `ProcessStockData`
+   - Runtime: Python 3.13
+   - Trigger: Kinesis Data Stream
+   - Purpose: Process and store data in both DynamoDB and S3
+
+### Query Historical Stock Data using Amazon Athena
+
+#### Create Glue Catalog Table
+```bash
+# 1. Create Glue Database
+aws glue create-database --database-input Name=stock_data_db
+
+# 2. Create Glue Table (replace YOUR-BUCKET-NAME)
+aws glue create-table --database-name stock_data_db --table-input '{
+  "Name": "stock_data_table",
+  "StorageDescriptor": {
+    "Columns": [
+      {"Name": "symbol", "Type": "string"},
+      {"Name": "open", "Type": "double"},
+      {"Name": "high", "Type": "double"},
+      {"Name": "low", "Type": "double"},
+      {"Name": "price", "Type": "double"},
+      {"Name": "previous_close", "Type": "double"},
+      {"Name": "change", "Type": "double"},
+      {"Name": "change_percent", "Type": "double"},
+      {"Name": "volume", "Type": "bigint"},
+      {"Name": "timestamp", "Type": "string"}
+    ],
+    "Location": "s3://YOUR-BUCKET-NAME/raw-data/",
+    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+    "SerdeInfo": {
+      "SerializationLibrary": "org.openx.data.jsonserde.JsonSerDe"
+    }
+  }
+}'
+```
+
+#### Query Examples
+```sql
+-- Basic query
+SELECT * FROM stock_data_table LIMIT 10;
+
+-- Top 5 stocks with highest price change
+SELECT symbol, price, previous_close,
+       (price - previous_close) AS price_change
+FROM stock_data_table
+ORDER BY price_change DESC
+LIMIT 5;
+
+-- Average trading volume per stock
+SELECT symbol, AVG(volume) AS avg_volume
+FROM stock_data_table
+GROUP BY symbol;
+
+-- Anomalous stocks (Price change > 5%)
+SELECT symbol, price, previous_close,
+       ROUND(((price - previous_close) / previous_close) * 100, 2) AS change_percent
+FROM stock_data_table
+WHERE ABS(((price - previous_close) / previous_close) * 100) > 5;
+```
+
+### Stock Trend Alerts using SNS
+
+#### Setup Steps
+1. **Enable DynamoDB Streams**
+   ```bash
+   aws dynamodb update-table --table-name stock-market-data --stream-specification StreamEnabled=true,StreamViewType=NEW_IMAGE
+   ```
+
+2. **Create SNS Topic**
+   ```bash
+   aws sns create-topic --name Stock_Trend_Alerts
+   # Subscribe to email alerts
+   aws sns subscribe --topic-arn arn:aws:sns:us-east-1:YOUR-ACCOUNT:Stock_Trend_Alerts --protocol email --notification-endpoint your-email@example.com
+   ```
+
+3. **Deploy Trend Analysis Lambda**
+   - Function name: `StockTrendAnalysis`
+   - Trigger: DynamoDB Streams
+   - Purpose: Detect trend reversals using moving averages (SMA-5 vs SMA-20)
+
+## Project Cleanup 🧹
+
+**Warning**: Remember to clean up resources to avoid unexpected charges!
+
+```bash
+# Delete Kinesis Stream
+aws kinesis delete-stream --stream-name Stock-market-stream
+
+# Delete DynamoDB Table
+aws dynamodb delete-table --table-name stock-market-data
+
+# Delete SNS Topic
+aws sns delete-topic --topic-arn arn:aws:sns:us-east-1:YOUR-ACCOUNT:Stock_Trend_Alerts
+
+# Delete S3 Buckets (empty first)
+aws s3 rm s3://your-bucket-name --recursive
+aws s3 rb s3://your-bucket-name
+
+# Delete Lambda Functions
+aws lambda delete-function --function-name ProcessStockData
+aws lambda delete-function --function-name StockTrendAnalysis
+
+# Delete Glue Database
+aws glue delete-database --name stock_data_db
+```
 
 ## Cost Considerations 💰
 - Kinesis Data Streams: ~$0.014 per shard hour + $0.014 per million records
-- Minimal compute costs for the Python script
-- Consider using spot instances for production deployments
+- Lambda: First 1M requests free, then $0.20 per 1M requests
+- DynamoDB: 25GB free storage, $0.25/GB beyond that
+- S3: First 5GB free, then $0.023/GB
+- Athena: $5 per TB of data scanned
+- SNS: First 1,000 notifications free
 
 ## Security Best Practices 🔒
 - Use IAM roles instead of hardcoded credentials
 - Enable CloudTrail for API logging
 - Implement least-privilege access policies
 - Rotate AWS access keys regularly
+- Enable encryption for data at rest and in transit
 
 ---
 
-**Author**: John Hollingsworth  
+**Author**: John Holly  
 **Date**: August 2025  
-**Version**: 1.0
+**Version**: 2.0  
+**Note**: This implements a near real-time pipeline (30-second delays) optimized for learning and cost-effectiveness. EOF
